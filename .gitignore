@@ -13,7 +13,7 @@ result*
 *.log
 *Cam16*
 
-tps_stn_pytorch
+tps_stn_pytorch*
 
 scops_env*
 

@@ -24,3 +24,4 @@ numpy==1.15.4
 opencv-python==4.0.0.21
 Pillow==6.2.0
 torch==1.8.0
+tps_stn_pytorch

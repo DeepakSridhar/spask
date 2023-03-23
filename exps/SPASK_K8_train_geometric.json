@@ -1,5 +1,5 @@
 {
-    "exp_name": "SCOPS_K8_train_parts_text",
+    "exp_name": "SPASK_K8_train_parts_cam_saliency",
     "num_parts": 8,
     "learning_rate_w": 0.01,
     "ref_net": "vgg19",
@@ -16,7 +16,7 @@
     "random_mirror": false,
     "random_scale": false,
     "random_seed": 1234,
-    "num_steps": 200000,
+    "num_steps": 100000,
     "batch_size": 8,
     "learning_rate": 1e-04,
     "power": 0.9,
@@ -29,7 +29,7 @@
     "lambda_sc": 1e4,
     "lambda_sc_gen": 100,
     "lambda_orthonormal": 1e-1,
-    "no_sal_masking":true,
+    "no_sal_masking":false,
     "tps_mode": "affine",
     "tps_sigma": 0.01,
     "eqv_random_mirror": false,
@@ -41,8 +41,8 @@
     "center_crop": false,
     "self_ref_coord": false,
     "restore_from": null,
-    "save_pred_every": 2000,
-    "snapshot_dir": "snapshots_CelebA_Geometric_parts_text",
-    "vis_interval": 500,
+    "save_pred_every": 5000,
+    "snapshot_dir": "snapshots_CelebA_Geometric_parts_cam_saliency",
+    "vis_interval": 1000,
     "gpu": 0
 }

@@ -28,7 +28,7 @@ def jpeg_res(filename):
 
 class Cam16_val(data.Dataset):
     def __init__(self, root, list_path, max_iters=None, crop_size=(321, 321), center_crop=False, ignore_saliency_fg=False,
-                 mean=(128, 128, 128), scale=True, mirror=True, ignore_label=255, iou_threshold=0.3):
+                 mean=(128, 128, 128), scale=True, mirror=True, ignore_label=255, iou_threshold=0.3, file_name=''):
         self.root = root
         self.list_path = list_path
         self.crop_h, self.crop_w = crop_size
@@ -42,25 +42,67 @@ class Cam16_val(data.Dataset):
         self.files = []
         # Load the dataset
         level = 4
-        variable_folder =  "/content/scops-keypoint-main/data/Cam16/" # "/content/drive/My Drive/Dataset"
-        # variable_folder = "/data8/deepak/scops-keypoint/data/Cam16/"
-        file_name = "balanced_dataset_shuff_level_4_size_32.pkl"
+        root =  "./data/Cam16/"
+        # file_name = "balanced_dataset_shuff_level_4_size_32.pkl"
+        # file_name = "testing_dataset_with_gt_level4_size128.pkl"
+        # file_name = "testing_dataset_with_gt_level4_size32.pkl"
         # file_name =  "patches_level" + str(level) + "_patch_size128_unbalanced.pkl"
-        with open(os.path.join(variable_folder, file_name), 'rb') as f:
-            dataset_patches, dataset_label = pickle.load(f)
+        with open(os.path.join(root, file_name), 'rb') as f:
+            if 'testing' not in file_name:
+                dataset_patches, dataset_label = pickle.load(f)
+                ratio = 0.8
+                self.img_ids = np.arange(int((1-ratio)*len(dataset_patches)))
+                if not max_iters==None:
+                    self.img_ids = self.img_ids * int(np.ceil(float(max_iters) / len(self.img_ids)))
+                num_norm = 0
+                num_p = 0
+                for idx in range(int(ratio*len(dataset_patches)),len(dataset_patches)):
+                    if dataset_label[idx] == 0:
+                        num_norm += 1
+                    num_p += 1
+                    
+                    self.files.append({
+                        "img": dataset_patches[idx],
+                        "label": dataset_label[idx],
+                        "name": f'{idx}',
+                        "landmarks": np.zeros((5, 2)),
+                    })
+            else:
+                dataset_patches, dataset_label, gt_dict = pickle.load(f)
+                # dataset_label = np.zeros(len(dataset_patches))
+                cum_dict = {}
+                csum = 0
+                for k,v in gt_dict.items():
+                    csum += v
+                    cum_dict[k] = csum
+                ratio = 0.
+                # print(cum_dict)
+                skip1 = cum_dict[21]
+                skip2 = cum_dict[90]
+                self.img_ids = np.arange(int((1-ratio)*len(dataset_patches)))
+                if not max_iters==None:
+                    self.img_ids = self.img_ids * int(np.ceil(float(max_iters) / len(self.img_ids)))
+                num_norm = 0
+                num_p = 0
+                for idx in range(int(ratio*len(dataset_patches)),len(dataset_patches)):
+                    if skip1 - 1 <= num_p < cum_dict[22]:
+                        num_p += 1
+                        continue
+                    if skip2 - 1 <= num_p < cum_dict[91]:
+                        num_p += 1
+                        continue
+                    if dataset_label[idx] == 0:
+                        num_norm += 1
+                    num_p += 1
+                    
+                    self.files.append({
+                        "img": dataset_patches[idx],
+                        "label": dataset_label[idx],
+                        "name": f'{idx}',
+                        "landmarks": np.zeros((5, 2)),
+                    })
+        print('Val original {} filtered {} normal patches {} tumor patches {}'.format(len(self.img_ids), len(self.files), num_norm, len(self.files)-num_norm))
 
-        self.img_ids = np.arange(int(0.2*len(dataset_patches)))
-        if not max_iters==None:
-            self.img_ids = self.img_ids * int(np.ceil(float(max_iters) / len(self.img_ids)))
-
-        for idx in range(int(0.8*len(dataset_patches)),len(dataset_patches)):
-            self.files.append({
-                "img": dataset_patches[idx],
-                "label": dataset_label[idx],
-                "name": f'{idx}',
-                "landmarks": np.zeros((5, 2)),
-            })
-        print('Val original {} filtered {}'.format(len(self.img_ids), len(self.files)))
 
     def __len__(self):
         return len(self.files)
@@ -130,7 +172,6 @@ class Cam16_val(data.Dataset):
         image = np.asarray(image, np.float32)
         image -= self.mean
 
-        # image = image[:, :, ::-1]  # change to BGR
         image = image.transpose((2, 0, 1))
 
         data_dict = {'img'     : image.copy(),
@@ -143,9 +184,11 @@ class Cam16_val(data.Dataset):
         return data_dict
 
 
+
+
 class Cam16(data.Dataset):
     def __init__(self, root, list_path, max_iters=None, crop_size=(321, 321), center_crop=False, ignore_saliency_fg=False,
-                 mean=(128, 128, 128), scale=True, mirror=True, ignore_label=255, iou_threshold=0.3):
+                 mean=(128, 128, 128), scale=True, mirror=True, ignore_label=255, iou_threshold=0.3, file_name=''):
         self.root = root
         self.list_path = list_path
         self.crop_h, self.crop_w = crop_size
@@ -159,12 +202,21 @@ class Cam16(data.Dataset):
         self.files = []
         # Load the dataset
         level = 4
-        variable_folder =  "/content/scops-keypoint-main/data/Cam16/" # "/content/drive/My Drive/Dataset"
-        # variable_folder = "/data8/deepak/scops-keypoint/data/Cam16/"
-        file_name = "balanced_dataset_shuff_level_4_size_32.pkl"
+        # root =  "./data/Cam16/" # "/content/drive/My Drive/Dataset"
+        # file_name = "balanced_dataset_shuff_level_4_size_32.pkl"
         # file_name =  "patches_level" + str(level) + "_patch_size128_unbalanced.pkl"
-        with open(os.path.join(variable_folder, file_name), 'rb') as f:
+        with open(os.path.join(root, file_name), 'rb') as f:
             dataset_patches, dataset_label = pickle.load(f)
+        
+        # # Optionally shuffle data - Shuffle two lists with same order
+        # # Using zip() + * operator + shuffle()
+        # temp = list(zip(dataset_patches, dataset_label))
+        # random.shuffle(temp)
+        # res1, res2 = zip(*temp)
+        # # res1 and res2 come out as tuples, and so must be converted to lists.
+        # res1, res2 = list(res1), list(res2)
+        # with open(os.path.join(variable_folder, "shuffle_"+file_name), 'wb') as f:
+        #     pickle.dump([res1,res2], f, protocol=-1)
 
         self.img_ids = np.arange(int(0.8*len(dataset_patches)))
         if not max_iters==None:
@@ -247,7 +299,6 @@ class Cam16(data.Dataset):
         image = np.asarray(image, np.float32)
         image -= self.mean
 
-        # image = image[:, :, ::-1]  # change to BGR
         image = image.transpose((2, 0, 1))
 
         data_dict = {'img'     : image.copy(),

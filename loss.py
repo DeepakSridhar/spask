@@ -170,3 +170,70 @@ def orthonomal_loss(w):
     WWT = torch.matmul(w_norm, w_norm.transpose(0, 1))
 
     return F.mse_loss(WWT - torch.eye(K).cuda(), torch.zeros(K, K).cuda(), size_average=False)
+
+
+def BCE_loss(pred,target):
+
+    ## BCE with logits
+
+    criterion = torch.nn.BCEWithLogitsLoss()  
+
+    # print("loss dims : ",pred[2].size(),target.size()) 
+
+    y_hat = pred[2]
+    one_hot = torch.nn.functional.one_hot(target,2).cuda()
+
+    # print(y_hat.get_device())
+    # print(one_hot.get_device())
+
+    return criterion(y_hat, one_hot.float())
+
+def MOD_BCE_loss(pred,target):
+    target = target.cuda()
+    ## BCE with logits
+
+    criterion = torch.nn.BCEWithLogitsLoss()  
+
+    # print("loss dims : ",pred[2].size(),target.size()) 
+
+    y_hat = pred[2]
+
+    pred_zero_one = torch.argmax(y_hat,dim= 1)
+
+    mask1 = (pred_zero_one == 0)*1
+    mask2 = (target == 1)*1
+    mask = mask1*mask2
+
+    wt = torch.exp(target-pred_zero_one) * mask + torch.ones_like(mask)
+
+    # wt = torch.exp(target-pred_zero_one)
+    one_hot = torch.nn.functional.one_hot(target,2).cuda()
+
+    # print(y_hat.get_device())
+    # print(one_hot.get_device())
+
+    return wt*criterion(y_hat, one_hot.float())
+
+
+def cross_entropy_loss(pred,target):
+    target = target.cuda()
+    ## BCE with logits
+
+    criterion = torch.nn.CrossEntropyLoss(weight=torch.tensor([1.0,1.1]).cuda(), label_smoothing=0.1, reduction='none')  #weight=torch.tensor([1.0,1.1]).cuda(), label_smoothing=0.1, 
+
+    # print("loss dims : ",pred[2].size(),target.size()) 
+
+    y_hat = pred[2]
+
+    pred_zero_one = torch.argmax(y_hat,dim= 1)
+
+    wt = torch.exp(target-pred_zero_one)
+    loss_unweighted = criterion(y_hat, target)
+
+    return wt*loss_unweighted
+
+
+def accuracy(y_hat,target):
+
+    outputs = torch.argmax(y_hat, dim=1)
+    return torch.sum(outputs==target.cuda())/(target.size(0))

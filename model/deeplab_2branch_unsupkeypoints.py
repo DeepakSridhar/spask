@@ -168,19 +168,30 @@ class ResNet(nn.Module):
             block, 256, layers[2], stride=1, dilation=2)
         self.layer4 = self._make_layer(
             block, 512, layers[3], stride=1, dilation=4)
-        self.layer5 = self._make_pred_layer(Classifier_Module, [6, 12, 18, 24], [
-                                            6, 12, 18, 24], num_classes, 2048)
+        # self.layer5 = self._make_pred_layer(Classifier_Module, [6, 12, 18, 24], [
+        #                                     6, 12, 18, 24], num_classes, 2048)
         
 
-        if args is not None:
-            self.map_sizes = [int(args.input_size.split(',')[0])//8 + 1]
-            sizes = [int(args.input_size.split(',')[0]), int(args.input_size.split(',')[0])]
-        else:
-            self.map_sizes = [17]
-            sizes = [128, 128]
-        print(sizes, self.map_sizes)
-        self.pose_net = AssembleNet(n_maps=n_maps, max_size=sizes, min_size=[16, 16])
+        # if args is not None:
+        #     self.map_sizes = [int(args.input_size.split(',')[0])//8 + 1]
+        #     sizes = [int(args.input_size.split(',')[0]), int(args.input_size.split(',')[0])]
+        # else:
+        #     self.map_sizes = [17]
+        #     sizes = [128, 128]
+        # print(sizes, self.map_sizes)
+        # self.pose_net = AssembleNet(n_maps=n_maps, max_size=sizes, min_size=[16, 16])
         
+        if args.use_mlp:
+            self.ll = nn.Sequential(
+                nn.Linear(2048, 1024),
+                nn.ReLU(True),
+                nn.Dropout(0.05),
+                nn.Linear(1024, 2),
+            )
+        else:
+            self.ll = nn.Linear(2048, 2)
+
+
         self.gauss_std = gauss_std
         self.gauss_mode = gauss_mode
 
@@ -320,6 +331,22 @@ class ResNet(nn.Module):
         for j in range(len(b)):
             for i in b[j]:
                 yield i
+
+    def optim_parameters_linear(self, args):
+        for name, param in self.named_parameters():
+            # print(name)
+            if args.optimize_bias:
+                if 'bias' in name:
+                    param.requires_grad = True
+            else:
+                if 'll' not in name:
+                    param.requires_grad = False
+
+        return [{'params':self.ll.parameters()}]
+
+    def optim_parameters_all(self, args):
+
+        return [{'params':self.parameters()}]
 
     def optim_parameters(self, args):
         return [{'params': self.get_1x_lr_params_NOscale(), 'lr': args.learning_rate},

@@ -25,6 +25,13 @@ def dataset_generator(args):
         train_dataset = dataset(args.data_dir, args.data_list, crop_size=args.input_size[0],
                                 img_fliplr=args.random_mirror, mean=np.array((122.67891434, 116.66876762, 104.00698793), dtype=np.float32),
                                 )
+    elif args.dataset.split('_')[0] == 'Cam16':
+        from dataset.cam16_dataset import Cam16
+        dataset = Cam16
+        train_dataset = dataset(args.data_dir, args.data_list, crop_size=args.input_size,
+                                scale=args.random_scale, mirror=args.random_mirror, mean=IMG_MEAN,
+                                center_crop=args.center_crop, ignore_saliency_fg=args.ignore_saliency_fg,
+                                iou_threshold=args.celeba_th, file_name=args.filename)
     elif args.dataset.split('_')[0] == 'CUB':
         from dataset.cub_train import CUBDataset
         dataset = CUBDataset
@@ -43,3 +50,19 @@ def dataset_generator(args):
         print('Dataset [{}] does not exisit!'.format(args.dataset))
         return None
     return train_dataset
+
+
+def val_dataset_generator(args):
+
+    if args.val_dataset == 'Cam16_val':
+        from dataset.cam16_dataset import Cam16_val
+        dataset = Cam16_val
+        val_dataset = dataset(args.data_dir, args.data_list, crop_size=args.input_size,
+                                scale=args.random_scale, mirror=args.random_mirror, mean=IMG_MEAN,
+                                center_crop=args.center_crop, ignore_saliency_fg=args.ignore_saliency_fg,
+                                iou_threshold=args.celeba_th)
+
+    else:
+        print('Val ataset [{}] does not exisit!'.format(args.val_dataset))
+        return None
+    return val_dataset

@@ -10,9 +10,12 @@ import os.path as osp
 import pickle
 import random
 import sys
+import loss
 from argparse import Namespace
 
 import numpy as np
+
+import gc
 
 import cv2
 import scipy.misc
@@ -22,9 +25,14 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils import data
 
+from sklearn.metrics import confusion_matrix
+
+import datetime as dt
+
+import logging
+
 import scops_trainer
-# import scops_trainer_org_plus_lm as scops_trainer
-from dataset.dataset_factory import dataset_generator
+from dataset.dataset_factory import dataset_generator,val_dataset_generator
 from model.model_factory import model_generator
 
 
@@ -36,10 +44,11 @@ EXP_NAME = 'SCOPS-Test'
 MODEL = 'DeepLab'
 BATCH_SIZE = 10
 NUM_WORKERS = 4
-DATASET = 'PASCAL'
+DATASET = 'Cam16'
+VAL_DATASET = 'Cam16_val'
 DATA_DIRECTORY = ''
 DATA_LIST_PATH = ''
-INPUT_SIZE = '128,128'
+INPUT_SIZE = '32,32'
 LEARNING_RATE = 1e-5
 MOMENTUM = 0.9
 NUM_CLASSES = 6
@@ -53,6 +62,7 @@ SNAPSHOT_DIR = './snapshots/'
 WEIGHT_DECAY = 0.0005
 CLIP_GRAD_NORM = 5
 VIS_TNTERVAL = 100
+VAL_REPORT = 100
 
 TPS_SIGMA = 0.01
 RAND_SCALE_LOW = 0.7
@@ -93,6 +103,11 @@ def get_arguments():
                         help="number of workers for multithread dataloading.")
     parser.add_argument("--dataset", type=str, default=DATASET,
                         help="Dataset selection")
+
+    parser.add_argument("--val_dataset", type=str, default=VAL_DATASET,
+                        help="Dataset selection")
+
+
     parser.add_argument("--data-dir", type=str, default=DATA_DIRECTORY,
                         help="Path to the directory containing the PASCAL VOC dataset.")
     parser.add_argument("--data-list", type=str, default=DATA_LIST_PATH,
@@ -103,6 +118,8 @@ def get_arguments():
                         help="iou_threshold for celebAWild")
     parser.add_argument("--trained_model", type=str, default="../imm-pytorch/checkpoint/snapshot_35.pt",
                         help="trained lm model")
+    parser.add_argument("--use-mlp", action="store_true",
+                        help="Whether to use MLP head during training.")
 
     # Data Augmentation
     parser.add_argument("--random-mirror", action="store_true",
@@ -115,8 +132,6 @@ def get_arguments():
     # Training hyper parameters
     parser.add_argument("--num-steps", type=int, default=NUM_STEPS,
                         help="Number of training steps.")
-    parser.add_argument("--start-step", type=int, default=0,
-                        help="Resume training steps.")
     parser.add_argument("--batch-size", type=int, default=BATCH_SIZE,
                         help="Number of images sent to the network in one step.")
     parser.add_argument("--learning-rate", type=float, default=LEARNING_RATE,
@@ -185,6 +200,10 @@ def get_arguments():
                         help="normalize reference feature map")
     parser.add_argument("--lambda-orthonamal", type=float, default=1e2,
                         help="weighting parameter for DFF orthonormal loss")
+    
+    # Vanilla BCE
+    parser.add_argument("--vanilla-bce", action="store_true",
+                        help="Whether to use vanilla bce.")
 
     parser.add_argument("--detach-k", action="store_true",
                         help="detach k")
@@ -206,6 +225,8 @@ def get_arguments():
                         help="Where to save snapshots of the model.")
     parser.add_argument("--vis-interval", type=int, default=VIS_TNTERVAL,
                         help="visualization interval.")
+    parser.add_argument("--val-report", type=int, default=VAL_REPORT,
+                        help="val result remporting interval.")    
     parser.add_argument("--tb-dir", type=str, default='tb_logs',
                         help="tensorbard dir.")
 
@@ -216,7 +237,23 @@ def get_arguments():
 
 def main():
 
+
+
+    log = logging.getLogger() #name of logger
+    log.setLevel(logging.DEBUG)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
+
+    filehandler = logging.FileHandler('mylog_'+str(dt.datetime.now().strftime('%d-%m-%Y %H:%M:%S'))+'.log')
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(funcName)s - %(levelname)s - %(message)s") # set format
+
+    handler.setFormatter(formatter) # setup format
+    filehandler.setFormatter(formatter) # setup format
+    log.addHandler(handler) # read to go
+    log.addHandler(filehandler) # read to go
+
     args = get_arguments()
+    res = args.resume
     args_dict = vars(args)
 
     if args.arg_file is not None:
@@ -225,7 +262,7 @@ def main():
             file_args = json.loads(arg_str)
             args_dict.update(file_args)
             args = Namespace(**args_dict)
-
+    args.resume = res
     args_str = '{}'.format(json.dumps(vars(args), sort_keys=False, indent=4))
     print(args_str)
 
@@ -235,8 +272,6 @@ def main():
     # save args to file
     with open(os.path.join(args.snapshot_dir, args.exp_name, 'exp_args.json'), 'w') as f:
         print(args_str, file=f)
-    # args.batch_size = 9
-    # print(args.batch_size)
 
     h, w = map(int, args.input_size.split(','))
     input_size = (h, w)
@@ -253,45 +288,87 @@ def main():
 
     if args.resume:
         ckpt = torch.load(args.resume)
-        # print(ckpt.keys())
-        args.start_step = int(args.resume.split('_')[-1].split('.pth')[0]) + 1
-        params = ckpt#['W_state_dict']
+        params = ckpt 
         model.load_state_dict(params)    
 
-    # Initialize SCOPS trainer
-    trainer = scops_trainer.SCOPSTrainer(args, model)
-
-    train_dataset = dataset_generator(args)
-    trainloader = data.DataLoader(train_dataset,
+    val_dataset = val_dataset_generator(args)
+    valloader = data.DataLoader(val_dataset,
                                   batch_size=args.batch_size,
-                                  shuffle=True,
+                                  shuffle=False,
                                   num_workers=args.num_workers,
                                   pin_memory=True,
-                                  drop_last=True)
-    trainloader_iter = enumerate(trainloader)
+                                  drop_last=False)
+
+    valloader_iter = enumerate(valloader)
+
+    print("##############################################")
+    print(f"test # of samples: {len(val_dataset)}")
+    print("##############################################")
+
+    bce_loss,val_acc, out, probs = calculate_epoch_loss(valloader_iter, valloader, model, 'val')
+    with open('results/test_results_'+str(args.resume.split('/')[-2])+'.pkl','wb') as f:
+        pickle.dump(out, f)
+    with open('results/test_probs_'+str(args.resume.split('/')[-2])+'.pkl','wb') as f:
+        pickle.dump(probs, f)
+    
+    # np.save(out, 'results/test_results_'+str(args.exp_name)+'.npy')
+    # np.save(out, 'results/test_probs_'+str(args.exp_name)+'.npy')
 
 
-    for i_iter in range(args.start_step, args.num_steps):
+    print(('val bce_loss = {:.3f}, val acc {}').format(bce_loss ,val_acc))
 
-        try:
-            _, batch = trainloader_iter.__next__()
-        except:
-            trainloader_iter = enumerate(trainloader)
-            _, batch = trainloader_iter.__next__()
 
-        trainer.step(batch, i_iter)
+def calculate_epoch_loss(itera, loader, model, phase = 'train',cal = 'loss'):
 
-        if i_iter >= args.num_steps - 1:
-            print('save model ...')
-            torch.save(model.state_dict(), osp.join(args.snapshot_dir,
-                                                    args.exp_name, 'model_' + str(args.num_steps) + '.pth'))
-            break
 
-        if i_iter % args.save_pred_every == 0 and i_iter != 0:
-            print('taking snapshot ...')
-            torch.save(model.state_dict(), osp.join(args.snapshot_dir,
-                                                    args.exp_name, 'model_' + str(i_iter) + '.pth'))
+            temp_loss = 0
+            temp_acc = 0
+            count = 0
+            results = []
+            targets = []
+            st_time = dt.datetime.now()
+            if cal == 'loss':
+                model.eval()
+                for k in range(len(loader)):
+                    try:
+                        _, batch_iter = itera.__next__()
+                    except:
+                        itera = enumerate(loader)
+                        _, batch_iter = itera.__next__()
 
+                    with torch.no_grad():
+                      result = model(batch_iter['img'].cuda())
+                    results.append(result[2])
+                    targets.append(batch_iter['true_lab'])
+                    temp_loss += loss.BCE_loss(result,batch_iter['true_lab'])
+                    
+                    count += 1
+            results = torch.cat(results, 0)
+            targets = torch.cat(targets, 0)
+            outputs = torch.argmax(results, dim=1).cpu().numpy()
+            probs, _ = torch.max(results.softmax(1), dim=1)
+            probs = probs.cpu().numpy()
+
+            cm = confusion_matrix(targets, outputs)
+            tn, fp, fn, tp = cm.ravel()
+            pr = tp/(tp+fp)
+            re = tp/(tp+fn)
+            tnr = tn/(tn+fp)
+            acc = (tp+tn)/(tp+fp+tn+fn)
+            balacc = (re + tnr) / 2
+            f1 = 2*pr*re/(pr+re)
+            print("Precision: {}".format(pr))
+            print("Recall: {}".format(re))
+            print("F-1: {}".format(f1))
+            print("Acc: {}".format(acc))
+            print("Balanced Accuracy: {}".format(balacc))
+            
+            temp_acc = loss.accuracy(results,targets)
+            gc.collect()
+
+            print(f'time taken for {phase} : {str(dt.datetime.now() -st_time)}')
+
+            return temp_loss/count,temp_acc, outputs, probs
 
 if __name__ == '__main__':
     main()

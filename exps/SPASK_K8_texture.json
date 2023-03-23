@@ -1,6 +1,6 @@
 {
-    "exp_name": "SCOPS_K5_train",
-    "num_parts": 5,
+    "exp_name": "SPASK_K8_train_parts_text",
+    "num_parts": 8,
     "learning_rate_w": 0.01,
     "ref_net": "vgg19",
     "ref_layer": "relu5_2,relu5_4",
@@ -16,8 +16,8 @@
     "random_mirror": false,
     "random_scale": false,
     "random_seed": 1234,
-    "num_steps": 120000,
-    "batch_size": 1,
+    "num_steps": 200000,
+    "batch_size": 8,
     "learning_rate": 1e-04,
     "power": 0.9,
     "momentum": 0.9,
@@ -41,8 +41,8 @@
     "center_crop": false,
     "self_ref_coord": false,
     "restore_from": null,
-    "save_pred_every": 5000,
-    "snapshot_dir": "snapshots_CelebA_Geometric_5",
-    "vis_interval": 1000,
+    "save_pred_every": 2000,
+    "snapshot_dir": "snapshots_CelebA_Geometric_parts_text",
+    "vis_interval": 500,
     "gpu": 0
 }

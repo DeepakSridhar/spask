@@ -140,9 +140,48 @@ class SCOPSTrainer(object):
         ), lr=args.learning_rate_w, momentum=args.momentum, weight_decay=args.weight_decay)
         self.optimizer_sc.zero_grad()
 
+        # Initialize optimizers.
+        if args.optimize_full_net:
+            params = self.model.optim_parameters_all(args)
+        else:
+            params = self.model.optim_parameters_linear(args)
+        self.optimizer_linear = optim.SGD(params,
+                                       lr=args.learning_rate, momentum=args.momentum, weight_decay=args.weight_decay)
+        self.optimizer_linear.zero_grad()
+        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer_seg, milestones=[15000, 30000], gamma=0.1)
+
         # visualizor
         self.viz = Visualizer(args)
 
+    def step_ll(self,batch,output,current_step,loss_type = 'vanilla'):
+
+        bce_loss = 0
+
+        self.optimizer_linear.zero_grad()
+
+        gt = batch['true_lab']
+
+        if loss_type == 'vanilla':
+            bce_loss = loss.BCE_loss(output,gt)
+        elif loss_type == 'cross_entropy':
+            ce_loss = loss.cross_entropy_loss(output, gt)
+            bce_loss = ce_loss.mean()
+        else:
+            bce_loss = loss.MOD_BCE_loss(output,gt)
+            bce_loss = bce_loss.mean()
+
+        bce_loss.backward()
+
+        self.optimizer_linear.step()
+        self.scheduler.step()
+
+
+        if current_step % self.args.vis_interval == 0:
+            print('exp = {}'.format(osp.join(self.args.snapshot_dir, self.args.exp_name)))
+            print(('iter = {:8d}/{:8d}, ' + 'train bce_loss = {:.3f}').format(current_step, self.args.num_steps,bce_loss ))
+
+        return bce_loss
+    
     def step(self, batch, current_step):
         loss_con_value = 0
         loss_eqv_value = 0

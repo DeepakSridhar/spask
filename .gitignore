@@ -12,6 +12,7 @@ result*
 *.swp
 *.log
 *Cam16*
+logs*
 
 tps_stn_pytorch
 

@@ -3,7 +3,7 @@ ECE271B project
 
 PyTorch implementation for self-supervised part segmentation via keypoint constraints - Application to histopathology study in cancer detection.
 
-![Alt text](misc/Arch1.png?raw=true "SPASK")
+![Alt text](misc/Arch1.png "SPASK")
 
 ## Installation
 

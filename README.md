@@ -23,7 +23,7 @@ Download CelebA unaligned from [here](https://drive.google.com/open?id=0B7EVK8r0
 
 ## Train the model
 
-```$ CUDA_VISIBLE_DEVICES={GPU} python train.py -f exps/spask_K8_train_geometric.json``` where `{GPU}` is the GPU device number.
+```$ CUDA_VISIBLE_DEVICES={GPU} python train.py -f exps/SPASK_K8_train_geometric.json``` where `{GPU}` is the GPU device number.
 
 ## CAMELYON16 Dataset
 
